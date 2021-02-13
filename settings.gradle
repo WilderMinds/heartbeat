@@ -1,0 +1,3 @@
+include ':heartbeat'
+include ':app'
+rootProject.name = "HeatbeatApplication"
