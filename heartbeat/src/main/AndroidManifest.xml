@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.expresspay.heartbeat">
+    package="com.samdev.heartbeat">
 
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -11,7 +11,7 @@
 
     <application
         android:usesCleartextTraffic="true">
-        <receiver android:name=".service.AlarmReceiver" android:exported="false"/>
+        <receiver android:name="com.samdev.heartbeat.service.AlarmReceiver" android:exported="false"/>
     </application>
 
 </manifest>
