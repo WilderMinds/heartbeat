@@ -3,12 +3,12 @@ package com.samdev.heartbeat
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import com.samdev.heartbeat.callbacks.LocationSettingsListener
 import com.samdev.heartbeat.models.ConfigParams
 import com.samdev.heartbeat.receivers.SocketListener
 import com.neovisionaries.ws.client.WebSocket
 import com.neovisionaries.ws.client.WebSocketFactory
 import com.neovisionaries.ws.client.WebSocketState
+import com.samdev.heartbeat.callbacks.ApplicationCallbacks
 import java.util.*
 
 /**
@@ -18,15 +18,27 @@ class HeartbeatController {
 
     companion object {
         val instance: HeartbeatController = HeartbeatController()
+        const val LAST_PAYLOAD = "LAST_PAYLOAD"
+        const val RANGE: String = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/()+?@$&!%*-"
     }
 
     val socketListener: SocketListener = SocketListener()
     private var preferences: SharedPreferences? = null
 
     var heartbeatConfig: HeartbeatConfig? = null
-    lateinit var webSocket: WebSocket
+    var webSocket: WebSocket? = null
     lateinit var configParams: ConfigParams
     val additionalParams: MutableMap<String, String?> = HashMap()
+
+
+    /**
+     * Method to generate random string
+     */
+    fun randomString(len: Int): String {
+        val sb = StringBuilder(len)
+        for (i in 0 until len) sb.append(RANGE[Random().nextInt(RANGE.length)])
+        return sb.toString()
+    }
 
 
     fun initSharedPrefs(context: Context) {
@@ -44,35 +56,44 @@ class HeartbeatController {
     }
 
     fun saveLastPayload(payload: String) {
-        setPreferencesFor("LAST_PAYLOAD", payload)
+        setPreferencesFor(LAST_PAYLOAD, payload)
     }
 
+
     val lastPayload: String
-        get() = getPreferencesFor("LAST_PAYLOAD", "")
+        get() = getPreferencesFor(LAST_PAYLOAD, "")
 
-    private fun initWebSocket() {
+
+    fun initWebSocket(): WebSocket? {
         try {
-            // init factory
             //WebSocketFactory factory = new WebSocketFactory().setConnectionTimeout(15000);
-            webSocket = WebSocketFactory().createSocket(configParams.socketUrl)
-            webSocket.addListener(socketListener)
-            webSocket.addProtocol("WSNetMQ")
+            webSocket = WebSocketFactory().createSocket(configParams.networkUrl)
+            webSocket?.let {
+                it.addListener(socketListener)
+                it.addProtocol("WSNetMQ")
 
-            if (!webSocket.isOpen) {
-                if (webSocket.state == WebSocketState.CREATED) {
-                    webSocket.connectAsynchronously()
-                } else {
-                    reconnectWebSocket()
+                if (!it.isOpen) {
+                    if (it.state == WebSocketState.CREATED) {
+                        it.connectAsynchronously()
+                    } else {
+                        reconnectWebSocket()
+                    }
                 }
             }
+            return webSocket
         } catch (e: Exception) {
             e.printStackTrace()
+            return null
         }
     }
 
+
+    /**
+     * Reconnect and assign to existing websocket instance
+     */
     fun reconnectWebSocket(): WebSocket? {
         return try {
-            webSocket = webSocket.recreate().connectAsynchronously()
+            webSocket = webSocket?.recreate()?.connectAsynchronously()
             webSocket
         } catch (e: Exception) {
             e.printStackTrace()
@@ -93,13 +114,16 @@ class HeartbeatController {
      * Add a key-value pair to the already existing parameters
      * @param key
      * @param value
+     *
+     * NB: Since we are working with hashmaps, we can use this same
+     * method to override already existing keys
      */
-    fun addAdditionalParams(key: String, value: String) {
+    fun addOrUpdateAdditionalParams(key: String, value: String) {
         additionalParams[key] = value
     }
 
     @Throws(Exception::class)
-    fun startService(context: Context?, locationSettingsListener: LocationSettingsListener?) {
+    fun startService(context: Context?, applicationCallbacks: ApplicationCallbacks?) {
         Log.e("TAG", "init webSocket and start service")
 
         checkNotNull(context) {
@@ -112,11 +136,11 @@ class HeartbeatController {
                 Please set the ConfigParams to proceed
                 """.trimIndent())
         }
-        checkNotNull(locationSettingsListener) { "LocationSettingsListener is null" }
+        checkNotNull(applicationCallbacks) { "LocationSettingsListener is null" }
 
         // init webSocket
-        initWebSocket()
-        heartbeatConfig = HeartbeatConfig(context, locationSettingsListener)
+        // initWebSocket()
+        heartbeatConfig = HeartbeatConfig(context, applicationCallbacks)
         heartbeatConfig!!.startService()
     }
 
@@ -129,7 +153,6 @@ class HeartbeatController {
 
     @Throws(Exception::class)
     fun sendImmediately() {
-        heartbeatConfig!!.collectHeartbeatData()
         heartbeatConfig!!.sendMessageHandler()
     }
 }

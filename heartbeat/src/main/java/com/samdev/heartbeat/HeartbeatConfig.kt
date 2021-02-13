@@ -18,11 +18,10 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.work.*
-import com.samdev.heartbeat.callbacks.LocationSettingsListener
 import com.samdev.heartbeat.callbacks.OnBroadcastDataReceived
 import com.samdev.heartbeat.models.Connectivity
 import com.samdev.heartbeat.models.Heartbeat
-import com.samdev.heartbeat.models.Payload
+import com.samdev.heartbeat.models.AppIdentifier
 import com.samdev.heartbeat.network.HttpNetworkHandler
 import com.samdev.heartbeat.network.NetworkHandler
 import com.samdev.heartbeat.network.WsNetworkHandler
@@ -31,14 +30,18 @@ import com.samdev.heartbeat.receivers.MyCellularStateListener
 import com.samdev.heartbeat.service.AlarmReceiver
 import com.samdev.heartbeat.service.HeartbeatWorker
 import com.google.gson.GsonBuilder
+import com.samdev.heartbeat.callbacks.ApplicationCallbacks
 import org.json.JSONObject
 import java.net.Inet4Address
+import java.net.MalformedURLException
 import java.net.NetworkInterface
+import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-class HeartbeatConfig(context: Context, private val locationSettingsListener: LocationSettingsListener) : OnBroadcastDataReceived {
+class HeartbeatConfig(context: Context, private val applicationCallbacks: ApplicationCallbacks) : OnBroadcastDataReceived {
+
     private val context: Context = context.applicationContext
 
     private var additionalParams: MutableMap<String, String?> = HashMap()
@@ -51,7 +54,7 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
     private var currentLocation = DEFAULT_LOCATION
     private var cellularStateListener: MyCellularStateListener? = null
     private var batteryLevelBroadcastReceiver: BatteryLevelBroadcastReceiver? = null
-    private var payload: Payload = Payload()
+    private var appIdentifier: AppIdentifier = AppIdentifier()
     private var heartbeat: Heartbeat = Heartbeat()
     private var networkHandler: NetworkHandler? = null
 
@@ -67,22 +70,72 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         HeartbeatController.instance.initSharedPrefs(context)
         initSystemServices()
         initNetworkConnection()
-        listenForLocationUpdates()
+
+        // only listen if specified
+        if (configParams.trackDeviceLocation) {
+            listenForLocationUpdates()
+        }
     }
 
+    /**
+     * Decide whether to use http or websockets for sending
+     * heartbeat payload
+     */
     private fun initNetworkConnection() {
-        // decide whether to use http or ws
-        initWebSocketConnection()
-        // initHttpConnection()
+        val url = URI.create(configParams.networkUrl)
+        val scheme = url.scheme
+
+        if (configParams.forceSendViaApiCall) {
+            initHttpConnection()
+            return
+        }
+
+        if (configParams.forceSendViaWebSocket) {
+            initWebSocketConnection()
+            return
+        }
+
+        if (isHttpScheme(scheme)) {
+            initHttpConnection()
+            return
+        }
+
+        if (isWebSocketScheme(scheme)) {
+            initWebSocketConnection()
+            return
+        }
+
+        throw MalformedURLException("Bad scheme detected")
+    }
+
+    private fun isValidScheme(scheme: String) : Boolean {
+        if (isWebSocketScheme(scheme) && isHttpScheme(scheme)) {
+            return true
+        }
+        return false
+    }
+
+    private fun isWebSocketScheme(scheme: String) : Boolean {
+        return when(scheme.toLowerCase(Locale.ROOT)) {
+            "ws", "wss" -> true
+            else -> false
+        }
+    }
+
+    private fun isHttpScheme(scheme: String) : Boolean {
+        return when(scheme.toLowerCase(Locale.ROOT)) {
+            "http", "https" -> true
+            else -> false
+        }
     }
 
     private fun initHttpConnection() {
-        networkHandler = HttpNetworkHandler()
+        networkHandler = HttpNetworkHandler(applicationCallbacks)
     }
 
 
     private fun initWebSocketConnection() {
-        networkHandler = WsNetworkHandler()
+        networkHandler = WsNetworkHandler(applicationCallbacks)
     }
 
 
@@ -95,9 +148,10 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
     }
 
 
-    //Formatter.formatIpAddress(wifiManager.getConnectionInfo().getIpAddress());
+
     private val ipAddress: String
         get() = ip //Formatter.formatIpAddress(wifiManager.getConnectionInfo().getIpAddress());
+
 
     private val ip: String
         get() {
@@ -139,6 +193,7 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
             Connectivity.UNKNOWN.name
         }
 
+
     private fun getSignalStrength(): String {
         // signal strength being returned is cellular, so check if connected network is wifi
         return if (networkType.equals(Connectivity.WIFI.name, ignoreCase = true)) {
@@ -146,9 +201,11 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         } else "$signalStrength dbm"
     }
 
+
     private fun getBatteryLevel(): String {
         return batteryLevel.toString()
     }
+
 
     // get connected network
     private val wifiSignalStrength: String
@@ -186,6 +243,7 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
             return locationMode == Settings.Secure.LOCATION_MODE_OFF
         }
 
+
     // trigger callback back to device
     private val deviceLocation: String
         @SuppressLint("MissingPermission")
@@ -193,7 +251,7 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
             var result = DEFAULT_LOCATION
             if (isLocationDisabled) {
                 // trigger callback back to device
-                locationSettingsListener.onLocationDisabled()
+                applicationCallbacks.onLocationDisabled()
                 Log.e("TAG", "location turned off")
                 return result
             }
@@ -226,7 +284,7 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
     fun collectHeartbeatData() {
         if (isLocationDisabled) {
             // trigger callback back to device
-            locationSettingsListener.onLocationDisabled()
+            applicationCallbacks.onLocationDisabled()
             Log.e("TAG", "location turned off")
         }
 
@@ -235,12 +293,7 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         additionalParams = HeartbeatController.instance.additionalParams
 
         // config params
-        payload = Payload()
-        payload.appId = configParams.appId
-        payload.appName = configParams.appName
-        payload.appVer = configParams.appVer
-        payload.deviceId = configParams.deviceId
-        payload.apiVersion = configParams.apiVersion // apiVersion
+        appIdentifier = configParams.addIdentifier
 
         // heartbeat params
         heartbeat = Heartbeat()
@@ -252,15 +305,24 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         heartbeat.heartbeat_version = BuildConfig.VERSION_NAME
     }
 
+
+    /**
+     * Collect and send payload
+     */
     fun sendMessageHandler() {
+        collectHeartbeatData()
+
         val payload = getPayloadAsString()
         networkHandler?.sendMessage(payload)
+        applicationCallbacks.onHeartbeatPayloadReceived(payload)
         Log.e("TAG", "PAYLOAD => $payload")
     }
 
     /**
      * This method is for picking additional data params from persistence. It is
-     * necessary because, when the POS restarts and we loose some data
+     * necessary because when the app/device restarts, we loose some data.
+     *
+     * This method helps us get it all back.
      */
     private fun reconcileAdditionalData() {
         try {
@@ -273,10 +335,12 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
                 Log.e("TAG", "No persisted payload found")
                 return
             }
+
             Log.e("TAG", "persisted payload => $persistedPayload")
             val persistedHeartbeat = JSONObject(persistedPayload).optJSONObject("hb")
 
             // check if we have a valid persisted payload
+            // "hb" contains the heartbeat payload
             if (persistedHeartbeat == null) {
                 Log.e("TAG", "persisted payload has no \"hb\" object hence exiting reconciliation")
                 return
@@ -321,6 +385,12 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         }
     }
 
+    /**
+     * Combine heartbeat data and additional parameters added by developer
+     * into single JSONObject
+     *
+     * @return The json object that will be assigned to "hb" in the final heartbeat payload
+     */
     private fun mergeHeartbeatAndAdditionalParams(): JSONObject {
         var result = JSONObject()
 
@@ -347,18 +417,16 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         return result
     }
 
-    // add heartbeat to json
-    fun getPayloadAsString(): String {
 
-        if (payload == null) {
-            Log.e("TAG", "Payload is null")
-            return ""
-        }
+    /**
+     * Generate the final heartbeat payload as String
+     */
+    private fun getPayloadAsString(): String {
 
         var message = ""
         try {
             val gsonBuilder = GsonBuilder().create()
-            message = gsonBuilder.toJson(payload)
+            message = gsonBuilder.toJson(appIdentifier)
 
             // add heartbeat to json
             val o = JSONObject(message)
@@ -370,8 +438,8 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         return message
     }
 
-    fun startService() {
 
+    fun startService() {
         // listen on telephony service
         telephonyManager?.listen(cellularStateListener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS or PhoneStateListener.LISTEN_DATA_CONNECTION_STATE)
 
@@ -383,11 +451,25 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         determineJobService()
     }
 
+
+    /**
+     * Decide what API to use for scheduling the heartbeats
+     */
     private fun determineJobService() {
+        // TODO: 13/02/2021 Based on android version & configuration params,
+        //  decide whether to use the WorkManager or the regular Alarm manager
+
         // useWorkManager()
         initAlarmManager()
     }
 
+
+    /**
+     * Use the work manager to schedule the heartbeats
+     *
+     * Note: This is more efficient when it comes to resource management, but
+     * there's no guarantee heartbeats will be sent at your predefined interval
+     */
     private fun useWorkManager() {
         // set up constraints
         val constraints = Constraints.Builder()
@@ -404,8 +486,14 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
                 .enqueueUniquePeriodicWork("HEARTBEAT", ExistingPeriodicWorkPolicy.KEEP, heartbeatWork);
     }
 
-    private fun initAlarmManager() {
 
+    /**
+     * Use the alarm manager to schedule the heartbeats
+     *
+     * Note: Not as efficient as the work manager and may drain battery quicker
+     * based on size of interval, but can ensure accurate heartbeat intervals.
+     */
+    private fun initAlarmManager() {
         // default interval is 10 minutes
         Log.e("TAG", "trigger time = " + configParams.triggerIntervalMillis)
         val intervalMillis = if (configParams.triggerIntervalMillis == 0) HEARTBEAT_INTERVAL_MILLIS else configParams.triggerIntervalMillis
@@ -422,6 +510,7 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         }
     }
 
+
     fun destroyService() {
         if (telephonyManager != null) {
             telephonyManager!!.listen(cellularStateListener, PhoneStateListener.LISTEN_NONE)
@@ -429,8 +518,6 @@ class HeartbeatConfig(context: Context, private val locationSettingsListener: Lo
         context.unregisterReceiver(batteryLevelBroadcastReceiver)
         additionalParams.clear()
         // locationManager?.removeUpdates(locationListener)
-
-
         // WorkManager.getInstance().cancelAllWork();
     }
 

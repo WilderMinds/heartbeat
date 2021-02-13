@@ -107,11 +107,11 @@ class SocketListener : WebSocketListener {
         var s = frame.payloadText
         s = s.substring(1)
         Log.e("Frame sent: ", s)
-        if (trnListener != null) {
+        /*if (trnListener != null) {
             trnListener?.onMessageSent()
         } else {
             Log.e("TAG", "Listener is null")
-        }
+        }*/
     }
 
     @Throws(Exception::class)
@@ -136,6 +136,11 @@ class SocketListener : WebSocketListener {
     @Throws(Exception::class)
     override fun onError(websocket: WebSocket, cause: WebSocketException) {
         Log.e("TAG onError ", cause.localizedMessage)
+        if (trnListener != null) {
+            trnListener!!.onError(cause)
+        } else {
+            Log.e("Listener is null", "")
+        }
     }
 
     @Throws(Exception::class)

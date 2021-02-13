@@ -13,7 +13,6 @@ class AlarmReceiver : BroadcastReceiver() {
             //val s = heartbeatConfig.getPayloadAsString();
             //Log.e("PAYLOAD => ", s)
 
-            heartbeatConfig.collectHeartbeatData()
             heartbeatConfig.sendMessageHandler()
         } catch (ignored: Exception) {
         }

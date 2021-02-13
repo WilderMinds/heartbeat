@@ -1,8 +1,8 @@
 package com.samdev.heartbeat.callbacks
 
 interface TransactionListener {
-    fun onTextReceived(text: String?)
-    fun onDisconnected()
-    fun onMessageSent()
     fun onConnected()
+    fun onDisconnected()
+    fun onError(cause: Exception)
+    fun onTextReceived(text: String?)
 }
