@@ -16,14 +16,14 @@ appIdentifier.setDeviceId("0000001234567890");
 
 
 
-### Init your [`ConfigParams`](https://github.com/WilderMinds/heartbeat/blob/master/heartbeat/src/main/java/com/samdev/heartbeat/models/ConfigParams.kt) class
+### Initialize your [`ConfigParams`](https://github.com/WilderMinds/heartbeat/blob/master/heartbeat/src/main/java/com/samdev/heartbeat/models/ConfigParams.kt) class
 ```
 val configParams = ConfigParams()
 
 // Interval with which to send heartbeat payloads
-configParams.triggerIntervalMillis = 10 * 60 * 1000
+configParams.triggerIntervalMillis = 10 * 60 * 1000 //10 mins
 
-// Set whether or not the heartbeat lib should contain location coordinates
+// Set whether or not the heartbeat library should track gps coordinates
 configParams.trackDeviceLocation = true
 
 // include your appIdentifier object
@@ -31,10 +31,10 @@ configParams.addIdentifier = initAppIdentifier()
 ```
 
 
-The library is configured to be able to send payloads via either websocket or with API calls.
-If the protocol of the `networkUrl` provided is either "http" or "https", it will automatically 
+The library is configured to be able to send payloads via either websocket or API calls.
+If the protocol/scheme of the **`networkUrl`** provided is either "**http**" or "**https**", it will automatically 
 attempt to send payloads via API calls using Retrofit.
-But if the protocol/scheme is "ws" or "wss" it send payloads via a websocket connection
+But if the protocol/scheme is "**ws**" or "**wss**" it send payloads via a websocket connection
 
 ```
 val ws_url = "wss://your.domain.com/"
@@ -43,7 +43,7 @@ configParams.networkUrl = "..."
 ```
 
 
-User also has an option to force either Networking Method
+User also has an option to override either Networking Method
 ```
 // force system to use API calls regardless of url scheme/protocol
 configParams.forceSendViaApiCall = true
@@ -74,7 +74,7 @@ try {
 
 
 ### If you want to include & track additional data from your app via the heartbeat payload
-Create a `Map` and set the new values you want to track as the keys
+Create a **`Map`** and set the new values you want to track as the keys
 ```
 val additionalParams: MutableMap<String, String> = HashMap()
 additionalParams["last_db_sync"] = "0123456789"
