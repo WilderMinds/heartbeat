@@ -95,3 +95,48 @@ The values of the additional params can also be updated using from anywhere in t
 HeartbeatController.instance.addOrUpdateAdditionalParams("key", "value")
 ```
 New params can also be added using the same method above.
+
+
+### Callbacks
+Includes some convenient callbacks
+```
+class MainActivity : AppCompatActivity(), ApplicationCallbacks {
+
+   ...
+   
+   override fun onLocationDisabled() { ... }
+   override fun onLocationEnabled() { ... }
+   override fun onNetworkSuccess(payload: Any?) { ... }
+   
+   override fun onNetworkError(throwable: Throwable) { // Heartbeat upload failed, handle error }
+   override fun onHeartbeatPayloadReceived(payload: String?) {
+       // do something with received payload
+   }
+}
+```
+
+
+
+### Sample payload
+```
+{
+  "appid": "com.samdev.heartbeatapplication",
+  "appname": "Heartbeat Demo",
+  "appver": "1.0",
+  "device-id": "A3w&WRV*DS43qfH0",
+  "heartbeat": {
+    "battery": "0.68",
+    "gps": "47.6063889,-122.3308333",
+    "version": "1.0",
+    "ip_address": "10.14.0.2",
+    "rssi": "55",
+    "network": "WIFI",
+    "last_db_sync": "0123456789",
+    "some_other_data": "set here",
+    "timestamp": "2021-02-13 15:48:14"
+  }
+}
+```
+
+check out full implementation [here](https://github.com/WilderMinds/heartbeat/blob/master/app/src/main/java/com/samdev/heatbeatapplication/MainActivity.kt)
+
