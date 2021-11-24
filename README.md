@@ -4,13 +4,14 @@ In your Activity class,
 ### Initialize the [`AppIdentifier`](https://github.com/WilderMinds/heartbeat/blob/master/heartbeat/src/main/java/com/samdev/heartbeat/models/AppIdentifier.kt) class
 This class contains data that will help identify the device and app instance sending the payload
 ```
-val appIdentifier = AppIdentifier()
-appIdentifier.appId = BuildConfig.APPLICATION_ID
-appIdentifier.appName = getString(R.string.app_name)
-appIdentifier.appVer = BuildConfig.VERSION_NAME
+val appIdentifier = AppIdentifier(
+    appId = BuildConfig.APPLICATION_ID,
+    appName = getString(R.string.app_name),
+    appVer = BuildConfig.VERSION_NAME
+)
 
-// if the device Id is not set, a random string will be generated for you
-appIdentifier.setDeviceId("0000001234567890");
+// set a device id, if the device Id is not set, a random string will be generated for you
+appIdentifier.deviceId = "0000001234567890"
 ```
 
 
@@ -90,7 +91,7 @@ If at any point you want to remove your newly added params from the heartbeat pa
 call the same method above and set an empty map.
 
 
-The values of the additional params can also be updated using from anywhere in the app using
+The values of the additional params can also be updated anywhere in the app using
 ```
 HeartbeatController.instance.addOrUpdateAdditionalParams("key", "value")
 ```
